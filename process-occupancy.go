@@ -1,45 +1,22 @@
 package main
 
 import (
-	"bufio"
 	"encoding/csv"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
 )
 
-// Read the text file passed in by name into a array of strings
-// Returns the array as the first return variable
-func readLines(filename string) ([]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines, scanner.Err()
-}
-
-func printStringArray(tempString []string) {
-	// Loop through the array and print each line
-	for i := 0; i < len(tempString); i++ {
-		fmt.Println(tempString[i])
-	}
-}
-
 // Format Header:	  TimeStamp,Date,Time,UniqueDevices,WiredDevices,WirelessDevices,Office
 // Example of format: 2019-08-20-23:40,2019-08-20,23:40,28,17,16,London
 func processOccupancyData(londonData bool, debug bool) {
 	var uniqueDevices, minUnique, maxUnique int = 0, 2000, 0
-	var fileName = "testdata/London/2019-08-20-Tuesday.txt"
+	var outputDate string
+	var directoryName = "testdata/London/"
 
 	// Setup at process start
 
@@ -47,53 +24,68 @@ func processOccupancyData(londonData bool, debug bool) {
 		fmt.Println("Output something interesting to debug")
 	}
 
-	// Open the file
-	csvFile, err := os.Open(fileName)
+	files, err := ioutil.ReadDir(directoryName)
 	if err != nil {
-		log.Fatalln("Couldn't open the csv file", err)
+		log.Fatal(err)
 	}
 
-	// Parse the file
-	reader := csv.NewReader(csvFile)
-	// Read and ignore the first record
-	reader.Read()
-
-	// Iterate through the records
-	for {
-		// Read each record from csv
-		csvRecord, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// We really care about field 3 - Unique Devices
-		// We'll capture Date (1) and Time (2) as well for debug reasons
-		uniqueDevices, _ = strconv.Atoi(csvRecord[3])
-		if uniqueDevices > maxUnique {
-			if debug {
-				fmt.Println("Biggest seen")
-			}
-			maxUnique = uniqueDevices
-		} else {
-			// Look for smallest number of devices, and ignore the collection bug that reports "1" randomly
-			if uniqueDevices < minUnique && uniqueDevices != 1 {
-				if debug {
-					fmt.Println("Smallest seen")
-				}
-
-				minUnique = uniqueDevices
-			}
-		}
-
+	for _, currentFile := range files {
 		if debug {
-			fmt.Printf("Date: %s Time: %s uniqueDevices: %d\n", csvRecord[1], csvRecord[2], uniqueDevices)
+			fmt.Println(currentFile.Name())
 		}
-	}
 
-	fmt.Printf("Smallest: %d Biggest: %d\n", minUnique, maxUnique)
+		// Open the file
+		csvFile, err := os.Open(directoryName + currentFile.Name())
+		if err != nil {
+			log.Fatalln("Couldn't open the csv file", err)
+		}
+
+		// Parse the file
+		reader := csv.NewReader(csvFile)
+		// Read and ignore the first record
+		reader.Read()
+
+		// Iterate through the records
+		for {
+			// Read each record from csv
+			csvRecord, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			// We really care about field 3 - Unique Devices
+			// We'll capture Date (1) and Time (2) as well for debug reasons
+			uniqueDevices, _ = strconv.Atoi(csvRecord[3])
+			if uniqueDevices > maxUnique {
+				if debug {
+					fmt.Println("Biggest seen")
+				}
+				maxUnique = uniqueDevices
+				outputDate = csvRecord[1]
+			} else {
+				// Look for smallest number of devices, and ignore the collection bug that reports randomly small numbers
+				if uniqueDevices < minUnique && uniqueDevices > 5 {
+					if debug {
+						fmt.Println("Smallest seen")
+					}
+
+					minUnique = uniqueDevices
+				}
+			}
+
+			if debug {
+				fmt.Printf("Date: %s Time: %s uniqueDevices: %d\n", csvRecord[1], csvRecord[2], uniqueDevices)
+			}
+		}
+
+		// Output for each file: Filename, Date, Minimum Unique Devices, Maximum Unique Devices
+		fmt.Printf("%s,%s,%d,%d\n", currentFile.Name(), outputDate, minUnique, maxUnique)
+		maxUnique = 0
+		minUnique = 2000
+	}
 }
 
 // Main routine
